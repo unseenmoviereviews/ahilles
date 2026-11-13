@@ -129,6 +129,10 @@ input{font:inherit;color:inherit}
 .item.empty .sts{margin-top:0}
 .item .ic{font-size:20px}
 .use b{font-size:14px}
+.bag{display:flex;gap:6px} .use.two{flex:1;min-width:0;gap:6px;padding:6px 7px;animation:none} .use.two small{display:block;font-size:11px;line-height:1.2} .use.two b{font-size:13px}
+.pickq{margin:0 0 6px;font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px} .pickx{margin-left:auto;border:2px solid var(--lak);background:#fff;padding:5px 9px;font-size:12px}
+.picks{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px} .pickb{border:2px solid var(--lak);background:#fff;padding:6px 4px;min-height:44px;text-align:center;line-height:1.15}
+.pickb b{display:block;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .pickb small{font-size:10.5px;color:var(--dim)}
 @media (max-height:720px){.use small{display:none}.use{min-height:44px;padding:5px 10px}.dock{padding:5px 12px 6px}}
 
 @media (max-height:640px){.qtext{font-size:16.5px}.opt{font-size:14px;padding:9px 10px;min-height:44px}}
@@ -556,7 +560,7 @@ var RACE_URL = "https://script.google.com/macros/s/AKfycbxnHHG5quMBmr1vIIZ43eotr
 var PASS_HASH = 1127430439;   // пароль преподавателя на разбор: тот же, что в практикумах
 var WORK = "ahilles";
 var KEY = "ahilles-race-v1";
-var TRACK = QUESTIONS.length;  // финиш: шаг, равный числу вопросов
+var NQ = QUESTIONS.length, TRACK = 36;  // вопросов больше, чем шагов: до финиша можно добежать раньше, чем кончатся вопросы
 var MINUTES = 45;
 var POLL_MS = 4000;
 var TUN = [[236, 228, 210], [178, 64, 44], [110, 120, 52], [52, 86, 150], [206, 160, 64], [112, 58, 120]];
@@ -577,7 +581,7 @@ function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79
 
 var app = document.getElementById("app");
 var S = load(), dirty = false;
-if (S) { S.out = S.out || []; S.used = S.used || []; S.usedTraps = S.usedTraps || {}; S.owl = S.owl || {}; S.streak = S.streak || 0; }
+if (S) { S.out = S.out || []; S.used = S.used || []; S.usedTraps = S.usedTraps || {}; S.owl = S.owl || {}; S.streak = S.streak || 0; S.inv = typeof S.inv === "string" ? [S.inv] : (S.inv || []); }
 function load() { try { var r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
 function save() { try { if (S) localStorage.setItem(KEY, JSON.stringify(S)); else localStorage.removeItem(KEY); } catch (e) { } }
 var draft = { sur: "", name: "", group: "", room: QP.zabeg || "", err: "", h: Math.floor(Math.random() * 8), c: Math.floor(Math.random() * 6), step: "start" };
@@ -648,7 +652,7 @@ Race.prototype.size = function () {
 };
 Race.prototype.place = function (list) {
   var arr = Object.keys(this.players).map(function (k) { return this.players[k]; }, this);
-  arr.sort(function (a, b) { return b.pos - a.pos; });
+  arr.sort(function (a, b) { return b.pos - a.pos || (a.n || 0) - (b.n || 0); });
   return arr;
 };
 Race.prototype.draw = function () {
@@ -744,7 +748,7 @@ Race.prototype.draw = function () {
   });
   arr.sort(function (a, b) { return a.lane - b.lane || a.dx - b.dx; });
   var lead = 0; arr.forEach(function (p) { lead = Math.max(lead, p.pos); }); this.lead = lead;
-  var top3 = {}; arr.slice().sort(function (a, b) { return b.pos - a.pos; }).slice(0, 3).forEach(function (p) { if (p.pos > 0) top3[p.id] = 1; }); this.top3 = top3;
+  var top3 = {}; arr.slice().sort(function (a, b) { return b.pos - a.pos || (a.n || 0) - (b.n || 0); }).slice(0, 3).forEach(function (p) { if (p.pos > 0) top3[p.id] = 1; }); this.top3 = top3;
   arr.forEach(function (p) {
     var set = buildLook(p.look || "0-0"), fr, flip = false;
     if (now < p.fallUntil) fr = set.sit;
@@ -795,7 +799,7 @@ function fresh() {
   QUESTIONS.forEach(function (q) { perm[q.id] = shuffle([0, 1, 2, 3]); });
   return { id: rid(), surname: draft.sur.trim(), name: (draft.sur.trim() + " " + draft.name.trim()).trim(), group: draft.group.trim(),
     room: (draft.room || draft.group).trim().toUpperCase(), look: lookKey(draft.h, draft.c),
-    order: order, perm: perm, i: 0, pos: 0, ok: 0, ans: [], pend: [], out: [], used: [], usedTraps: {}, inv: null, streak: 0, boost: false, shield: false,
+    order: order, perm: perm, i: 0, pos: 0, ok: 0, ans: [], pend: [], out: [], used: [], usedTraps: {}, inv: [], streak: 0, boost: false, shield: false,
     owl: {}, lastEv: 0, startedAt: Date.now(), done: false, revealed: false };
 }
 /* Оценка по итоговому шагу в гонке (с учётом подлянок), шаг не больше финиша. */
@@ -804,7 +808,7 @@ var MARK_WORDS = { 5: "Отлично", 4: "Хорошо", 3: "Удовлетв�
 
 /* ---------- подлянки ---------- */
 var ITEMS = {
-  oil:      { icon: "🫒", name: "Оливковое масло",   hint: "Бегун прямо перед вами теряет 1 шаг", atk: 1 },
+  oil:      { icon: "🫒", name: "Оливковое масло",   hint: "Выберите бегуна: он теряет 1 шаг", atk: 1 },
   tortoise: { icon: "🐢", name: "Черепаха Зенона",   hint: "Летит в лидера забега: −2 шага", atk: 2 },
   zeus:     { icon: "⚡", name: "Гнев Зевса",        hint: "Все, кто впереди, теряют по 1 шагу", atk: 1 },
   trap:     { icon: "🏺", name: "Амфора с маслом",   hint: "Ставится на ваш шаг. Кто первым на него наступит, скатится на 1 шаг", atk: 1 },
@@ -923,7 +927,7 @@ function startBots() {
         b.pos = Math.min(TRACK, b.pos + (b.boost ? 2 : 1)); b.boost = false; b.streak++;
         FK.ev.forEach(function (e) { if (e.kind === "trap" && !e.used && e.from !== b.id && e.step === b.pos) { e.used = b.name; botHit(b, 1); } });
       } else { b.pos = Math.max(0, b.pos - 1); b.streak = 0; }
-      if (b.n >= TRACK) b.fin = 1;
+      if (b.n >= NQ || b.pos >= TRACK) b.fin = 1;
       if (b.streak >= STREAK) {
         b.streak = 0;
         var arr = botLeader(), rank = arr.length > 1 ? arr.indexOf(b) / (arr.length - 1) : 0.5, it = rollItem(rank);
@@ -940,12 +944,16 @@ function startBots() {
 }
 
 /* ---------- применение подлянок ---------- */
-function useItem() {
-  if (!S || !S.inv || S.done) return;
-  var it = S.inv, me = S.pos, msg = "";
+function useItem(idx, tgt) {
+  if (!S || S.done || !S.inv[idx]) return;
+  var it = S.inv[idx], me = S.pos, msg = "";
   var opp = others(), ahead = opp.filter(function (p) { return p.pos > me; }).sort(function (a, b) { return a.pos - b.pos; });
   function hit(p, kind) { S.out.push({ to: p.id, toName: p.name, kind: kind, step: 0 }); if (race && race.players[p.id]) race.players[p.id].fx = { icon: ITEMS[kind].icon, until: performance.now() + 1800 }; }
-  if (it === "oil") { if (!ahead.length) return note("Впереди никого нет. Масло пригодится позже."); hit(ahead[0], "oil"); msg = "Масло под ногами у " + shortName(ahead[0].name); }
+  if (it === "oil") {
+    var tp = opp.filter(function (p) { return p.id === tgt; })[0];
+    if (!tp) { if (!opp.length) return note("На дорожке больше никого нет. Масло пригодится позже."); ui.pick = idx; return renderQuiz(); }
+    hit(tp, "oil"); msg = "Масло под ногами у " + shortName(tp.name);
+  }
   else if (it === "tortoise") {
     var lead = opp.slice().sort(function (a, b) { return b.pos - a.pos; })[0];
     if (!lead || lead.pos <= me) return note("Вы и так впереди всех. Черепаху лучше приберечь.");
@@ -959,7 +967,7 @@ function useItem() {
     S.owl[q.id] = shuffle([1, 2, 3]).slice(0, 2); msg = "Сова Афины убрала два неверных варианта";
   }
   else if (it === "shield") { S.shield = true; msg = "Щит поднят: одна атака будет отражена"; }
-  S.inv = null; dirty = true; save(); push();
+  S.inv.splice(idx, 1); ui.pick = null; dirty = true; save(); push();
   note(msg); renderQuiz();
 }
 function note(t) {
@@ -1041,12 +1049,12 @@ function renderStart() {
   stopGame();
   app.innerHTML =
     '<div class="screen"><div class="hero"><canvas id="heroCv"></canvas><div class="hero-t">' +
-      '<h1 id="secretT">Ахиллес<br>и черепаха</h1><p>Контрольная работа по логике. ' + TRACK + ' вопросов по всем пяти темам курса.</p></div></div>' +
+      '<h1 id="secretT">Ахиллес<br>и черепаха</h1><p>Контрольная работа по логике. ' + NQ + ' вопросов по всем пяти темам курса.</p></div></div>' +
     '<div class="meander"></div><main class="wrap">' +
     '<div class="card"><p class="kick">Правила забега</p><ul class="rules">' +
       '<li>Верный ответ — бегун делает шаг вперёд. Ошибка — шаг назад. Ниже старта отступить нельзя.</li>' +
       '<li>Вопросы и варианты у каждого перемешаны. На каждый вопрос отвечаете один раз.</li>' +
-      '<li>Внизу экрана — общий забег группы. Финиш на ' + TRACK + '-м шаге.</li>' +
+      '<li>Внизу экрана — общий забег группы. Финиш на ' + TRACK + '-м шаге. Кто добежал, тот закончил: оставшиеся вопросы ему не задают.</li>' +
       '<li>Три верных подряд — подлянка из амфоры: масло, черепаха Зенона, гнев Зевса, ловушка, сандалии Гермеса, сова Афины или щит. Отстающим чаще выпадают сильные атаки, лидерам — защита.</li>' +
       '<li>Ахиллесова пята: лидер забега от атак теряет вдвое больше. Кто ответил на все вопросы, в безопасности.</li>' +
       '<li>Оценка — по шагу на финише: от 80% пути — «5», от 62% — «4», от 42% — «3».</li>' +
@@ -1135,8 +1143,8 @@ function hud() {
 function renderQuiz() {
   var box = document.getElementById("quiz"); if (!box) return;
   var head = '<div class="qtop"><span class="ttl">' + (DEMO ? "ТРЕНИРОВКА" : "АХИЛЛЕС И ЧЕРЕПАХА") + '</span><span class="meta">' + gChip() +
-    '<span>' + Math.min(S.i + (S.done ? 0 : 1), TRACK) + '/' + TRACK + '</span><span id="clock">' + minutes() + '′</span></span></div>' +
-    '<div class="qbar"><i style="width:' + (S.i / TRACK * 100) + '%"></i></div>';
+    '<span>' + Math.min(S.i + (S.done ? 0 : 1), NQ) + '/' + NQ + '</span><span id="clock">' + minutes() + '′</span></span></div>' +
+    '<div class="qbar"><i style="width:' + (S.i / NQ * 100) + '%"></i></div>';
   var body;
   if (!S.done) {
     var q = curQ(), perm = S.perm[q.id], L = "АБВГ";
@@ -1151,13 +1159,13 @@ function renderQuiz() {
     gFinish(WORK, Math.min(S.pos, TRACK), TRACK);
     if (!S.finSent && RACE_URL && !net.finSending) {
       net.finSending = true;
-      api({ a: "fin", room: S.room, code: S.fin.code, name: S.name, group: S.group, ok: S.ok, total: TRACK, pct: G.pct, mark: G.mark, pos: S.pos,
+      api({ a: "fin", room: S.room, code: S.fin.code, name: S.name, group: S.group, ok: S.ok, total: S.i, pct: G.pct, mark: G.mark, pos: S.pos,
         place: S.place || 1, lv: S.leaves || 0, away: S.awaySec || 0, min: minutes() }, function (j) { net.finSending = false; if (j && j.ok) { S.finSent = true; save(); } });
     }
     body = '<div class="res"><p class="kick" style="margin:0">Забег окончен</p><div class="grade">' + G.mark + '</div><div class="gw">' + MARK_WORDS[G.mark].toUpperCase() + '</div>' +
       '<p>Финишный шаг ' + S.pos + ' из ' + TRACK + ' · ' + G.pct + '% · место ' + (S.place || 1) + '</p>' +
-      '<p class="small">Верных ответов ' + S.ok + ' из ' + TRACK + ' · ' + minutes() + ' мин. Оценка считается по шагу, с учётом подлянок.</p>' +
-      '<p class="small">Зенон утверждал, что быстроногий Ахиллес не догонит черепаху. Черепаха ждёт у финиша: дойти до неё может только тот, кто ответил на всё верно.</p></div>' +
+      '<p class="small">' + (S.pos >= TRACK ? 'Финиш взят за ' + S.i + ' вопросов из ' + NQ + '. ' : '') + 'Верных ответов ' + S.ok + ' из ' + S.i + ' · ' + minutes() + ' мин. Оценка считается по шагу, с учётом подлянок.</p>' +
+      '<p class="small">Зенон утверждал, что быстроногий Ахиллес не догонит черепаху. Черепаха ждёт у финиша, на ' + TRACK + '-м шаге. Вопросов ' + NQ + ', так что право на ошибку есть, но небольшое.</p></div>' +
       (DEMO ? '<div class="card"><p class="kick">Тренировка</p><p class="small" style="margin:0">Это был тренировочный забег с ботами. Результат никуда не отправлен.</p>' +
         '<button class="btn" data-act="real">К настоящей контрольной</button></div>'
         : '<div style="background:var(--lak);padding:2px 10px 10px">' + gCard() + '</div>') +
@@ -1178,10 +1186,15 @@ function itemBar() {
   if (S.boost) st.push("👟 +2");
   if (amLeader()) st.push("🦶 лидер: удары ×2");
   var streak = '<span class="streak">' + [0, 1, 2].map(function (k) { return '<i class="' + (k < S.streak ? "on" : "") + '"></i>'; }).join("") + '</span>';
-  if (S.inv) {
-    var it = ITEMS[S.inv];
-    return '<div class="item"><button class="use" data-act="use"><span class="ic">' + it.icon + '</span><span><b>' + esc(it.name) + '</b><br><small>' + esc(it.hint) + '</small></span><span class="go">ПУСК</span></button>' + (st.length ? '<span class="sts">' + st.join(" · ") + '</span>' : '') +
-      '</div>';
+  if (ui.pick != null && S.inv[ui.pick]) {
+    var near = others().sort(function (a, b) { return Math.abs(a.pos - S.pos) - Math.abs(b.pos - S.pos) || b.pos - a.pos; }).slice(0, 6).sort(function (a, b) { return b.pos - a.pos; });
+    return '<div class="item"><p class="pickq">' + ITEMS[S.inv[ui.pick]].icon + ' В кого? <button class="pickx" data-act="tgtx">отмена</button></p><div class="picks">' +
+      near.map(function (p) { var d = p.pos - S.pos; return '<button class="pickb" data-act="tgt" data-id="' + esc(p.id) + '"><b>' + esc(shortName(p.name)) + '</b><small>шаг ' + p.pos + (d > 0 ? ', впереди на ' + d : d < 0 ? ', позади на ' + (-d) : ', рядом') + '</small></button>'; }).join("") + '</div></div>';
+  }
+  if (S.inv.length) {
+    return '<div class="item"><div class="bag">' + S.inv.map(function (k, i) { var it = ITEMS[k];
+      return '<button class="use' + (S.inv.length > 1 ? " two" : "") + '" data-act="use" data-i="' + i + '"><span class="ic">' + it.icon + '</span><span><b>' + esc(it.name) + '</b><br><small>' + esc(it.hint) + '</small></span>' + (S.inv.length > 1 ? '' : '<span class="go">ПУСК</span>') + '</button>'; }).join("") + '</div>' +
+      '<span class="sts">' + [S.inv.length < 2 ? streak + ' до второй' : 'оба места заняты'].concat(st).join(" · ") + '</span></div>';
   }
   return '<div class="item empty"><span class="ic">🏺</span>' + streak + '<span class="small">до подлянки</span>' +
     (st.length ? '<span class="sts">' + st.join(" · ") + '</span>' : '') + '</div>';
@@ -1211,8 +1224,8 @@ function answer(o) {
   var trapped = ok && checkTrap();
   S.pend.push({ ts: Date.now(), qid: q.id, topic: q.t, q: q.q, ans: q.o[o], ok: ok ? 1 : 0, pos: S.pos });
   var got = null;
-  if (S.streak >= STREAK) { S.streak = 0; if (!S.inv) { S.inv = rollItem(myRank()); got = S.inv; } }
-  if (S.i >= TRACK) { S.done = true; S.doneAt = Date.now(); S.inv = null; }
+  if (S.streak >= STREAK) { S.streak = 0; if (S.inv.length < 2) { got = rollItem(myRank()); S.inv.push(got); } }
+  if (S.i >= NQ || S.pos >= TRACK) { S.done = true; S.doneAt = Date.now(); S.inv = []; ui.pick = null; }
   dirty = true; save();
   flashMsg(ok ? (gain > 1 ? "+2 ШАГА" : "+1 ШАГ") : (S.pos === 0 ? "СТОП" : "−1 ШАГ"), ok && !trapped);
   if (got) setTimeout(function () { note("Серия из " + STREAK + " верных! В амфоре: " + ITEMS[got].icon + " " + ITEMS[got].name); }, 300);
@@ -1279,7 +1292,7 @@ function renderBoard() {
   var el = document.getElementById("board"); if (!el || !race) return;
   var arr = race.place();
   el.innerHTML = arr.length ? arr.map(function (p, i) {
-    return '<div class="' + (p.fin ? "fin" : "") + '"><b>' + (i + 1) + '</b><span style="flex:1">' + esc(p.name) + '</span><span>шаг ' + p.pos + ' · ' + p.n + '/' + TRACK + '</span></div>';
+    return '<div class="' + (p.fin ? "fin" : "") + '"><b>' + (i + 1) + '</b><span style="flex:1">' + esc(p.name) + '</span><span>шаг ' + p.pos + ' · ' + p.n + '/' + NQ + '</span></div>';
   }).join("") : '<div>Пока никто не вышел на старт. Код забега: <b style="min-width:0">' + esc((QP.zabeg || "").toUpperCase()) + '</b></div>';
 }
 
@@ -3332,7 +3345,9 @@ document.addEventListener("click", function (e) {
   }
   else if (act === "go") { S = fresh(); save(); stopGame(); render(); }
   else if (act === "ans") answer(+el.dataset.o);
-  else if (act === "use") useItem();
+  else if (act === "use") useItem(+(el.dataset.i || 0));
+  else if (act === "tgt") useItem(ui.pick, el.dataset.id);
+  else if (act === "tgtx") { ui.pick = null; renderQuiz(); }
   else if (act === "train") { location.search = "?demo=1" + (QP.zabeg ? "&zabeg=" + encodeURIComponent(QP.zabeg) : ""); }
   else if (act === "real") { location.search = QP.zabeg ? "?zabeg=" + encodeURIComponent(QP.zabeg) : ""; }
   else if (act === "unlock") {
